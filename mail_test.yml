@@ -1,0 +1,13 @@
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Send an email with job results.
+      tags: mail, email, e-mail
+      mail:
+        host: "{{ ansible_host }}"
+        port: 25
+        from: "{{ ansible_host }}"
+        to: "{{ mail_to_test }}"
+        subject: "Ansible Test"
+        body: "This is a test from Ansible."
+      delegate_to: localhost

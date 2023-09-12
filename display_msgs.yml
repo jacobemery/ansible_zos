@@ -1,0 +1,12 @@
+---
+- name: Display outstanding messages on z/OS system.
+  hosts: zos_host
+  collections:
+    - ibm.ibm_zos_core
+  gather_facts: no
+  environment: "{{ environment_vars }}"
+  tasks:
+    - name: Get outstanding messages from system.
+      zos_operator_action_query:
+        system: "{{ system }}"
+      

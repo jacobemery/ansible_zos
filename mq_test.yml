@@ -1,0 +1,16 @@
+---
+- name: Display a queue
+  hosts: zos_host
+  collections:
+    - ibm.ibm_zos_core
+  gather_facts: no
+  environment: "{{ environment_vars }}"
+  tasks:
+    - name: Issue display command
+      zos_operator:
+        cmd: "ZMQ1 DIS QLOCAL( ZMQ1.DEAD.QUEUE )"
+        verbose: false
+      register: display_output
+    - name: Output response from display command
+      debug:
+        msg: "{{ display_output.content[17].strip() }}"

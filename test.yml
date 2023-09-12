@@ -1,0 +1,7 @@
+---
+- hosts: workstation
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Test 1 2 3
+      ansible.builtin.ping:

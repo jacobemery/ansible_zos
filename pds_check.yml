@@ -1,0 +1,28 @@
+# (c) Copyright IBM Corporation 2021
+# Apache License, Version 2.0 (see https://opensource.org/licenses/Apache-2.0)
+#This playbook initiates SDSF and IKJEFT01 programs using ansible
+---
+- name: Submit a job to allocate a data set on z/OS
+  hosts: zos_host
+  collections:
+    - ibm.ibm_zos_core
+  gather_facts: no
+  environment:
+    _BPXK_AUTOCVT: "ON"
+    ZOAU_HOME: "{{ ZOAU }}"
+    PYTHONPATH: "{{ ZOAU }}/lib"
+    LIBPATH: "{{ ZOAU }}/lib:{{ PYZ }}/lib:/lib:/usr/lib:."
+    PATH: "{{ ZOAU }}/bin:{{ PYZ }}/bin:/bin:/var/bin"
+    _CEE_RUNOPTS: "FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)"
+    _TAG_REDIR_ERR: "txt"
+    _TAG_REDIR_IN: "txt"
+    _TAG_REDIR_OUT: "txt"
+    LANG: "C"
+
+  tasks:
+    - name: Check to make sure PDS was allocated.
+      zos_data_set:
+        name: "{{ pds_name }}"
+        type: pds
+        state: present
+        replace: false

@@ -1,0 +1,123 @@
+# (c) Copyright IBM Corporation 2021
+# Apache License, Version 2.0 (see https://opensource.org/licenses/Apache-2.0)
+#This playbook initiates SDSF and IKJEFT01 programs using ansible
+---
+- name: Submit a job to allocate a data set on z/OS
+  hosts: zos_host
+  collections:
+    - ibm.ibm_zos_core
+  gather_facts: no
+  environment:
+    _BPXK_AUTOCVT: "ON"
+    ZOAU_HOME: "{{ ZOAU }}"
+    PYTHONPATH: "{{ ZOAU }}/lib"
+    LIBPATH: "{{ ZOAU }}/lib:{{ PYZ }}/lib:/lib:/usr/lib:."
+    PATH: "{{ ZOAU }}/bin:{{ PYZ }}/bin:/bin:/var/bin"
+    _CEE_RUNOPTS: "FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)"
+    _TAG_REDIR_ERR: "txt"
+    _TAG_REDIR_IN: "txt"
+    _TAG_REDIR_OUT: "txt"
+    LANG: "C"
+
+  tasks:
+    - name: Convert a local JCL file to IBM-037 and submit the job
+      zos_job_submit:
+        src: "{{playbook_dir}}/{{jcl_jobname}}.jcl"
+        location: LOCAL
+        wait: false
+        encoding:
+          from: ISO8859-1
+          to: IBM-037
+      register: job_sub_result_production
+      tags: mode_production
+
+    - name: Set fact `job_sub_result` with live production content
+      set_fact:
+        job_sub_result: "{{job_sub_result_production}}"
+      tags: mode_production
+
+    - name: Set facts used in this playbook
+      set_fact:
+        submit_job_name: "{{ job_sub_result.jobs[0].job_name }}"
+        submit_job_id: "{{ job_sub_result.jobs[0].job_id }}"
+        submit_jobs_ddnames_length: "{{ job_sub_result.jobs[0].ddnames |length }}"
+        submit_job_ddnames_list: "{{ job_sub_result.jobs[0].ddnames }}"
+        submit_job_list: "{{ job_sub_result.jobs[0] }}"
+        submit_job_ret_code: "{{ job_sub_result.jobs[0].ret_code.code }}"
+        submit_job_ret_code_msg: "{{ job_sub_result.jobs[0].ret_code.msg }}"
+        submit_job_subsystem: "{{ job_sub_result.jobs[0].subsystem }}"
+      tags: always
+
+    - name: Fact values used in this playbook
+      debug:
+        msg:
+          - Job name={{submit_job_name}}
+          - Subsystem={{submit_job_subsystem}}
+          - Job ID={{submit_job_id}}
+          - DD Count={{submit_jobs_ddnames_length}}
+          - "{{submit_job_ddnames_list}}"
+          - "{{submit_job_list}}"
+          - Return Code={{submit_job_ret_code}}
+          - Return Code Message={{submit_job_ret_code_msg}}
+      tags: mode_verbose
+
+    - name: Get job output for job ID {{submit_job_id}}
+      zos_job_output:
+        job_id: "{{submit_job_id}}"
+      register: job_output_result
+      when: job_sub_result_production is defined and job_sub_result_production
+      tags: always
+
+    - name: Result for get job output for job ID {{submit_job_id}}
+      debug:
+        msg: "{{ job_output_result }}"
+      when: job_sub_result_production is defined and job_sub_result_production
+      tags: always
+
+    - name: Traverse all DDs ddname(s) from submitted job {{submit_job_name}} using ansible `with_items` and `json_query` with fact `submit_job_list`
+      debug:
+        msg: "{{item}}"
+      with_items: "{{ submit_job_list | community.general.json_query('ddnames[*].ddname') }}"
+      tags: always
+
+    # - name: Traverse all DDs from submitted job {{submit_job_name}} using hard coded count with registered variable `job_sub_result`
+    #   debug:
+    #     msg:
+    #       - "{{ job_sub_result.jobs[0].ddnames[item |int].ddname }}"
+    #   with_sequence: count=4
+    #   tags: always
+
+    - name: Debug return code variable.
+      debug:
+        var: job_sub_result.jobs[0].ret_code.code
+
+#    - block:
+#      - name: Fail if JCL job return code is non-zero or None.
+#        fail:
+#          msg: "ERROR! {{ submit_job_name }} failed with return code {{ submit_job_ret_code }} {{ submit_job_ret_code_msg }}."
+#        when: submit_job_ret_code == "" or job_sub_result.jobs[0].ret_code.code != 0
+      
+#      rescue: 
+    - name: Email JCL error information to admin.
+      mail:
+        host: "{{ ansible_host }}"
+        port: 25
+        from: "{{ ansible_host }}"
+        to: "{{ mail_to }}"
+        subject: "ERROR! {{ submit_job_name }} failed on {{ submit_job_subsystem }}"
+        body: |
+          - Job Name = {{submit_job_name}}
+          - Ansible Host = {{inventory_hostname}}
+          - z/OS Subsystem = {{ submit_job_subsystem }}
+          - Job ID = {{submit_job_id}}
+          - DD Count = {{submit_jobs_ddnames_length}}
+          - Return Code = {{submit_job_ret_code}}    #will be None if JCL error
+          - Return Code Message = {{submit_job_ret_code_msg}}
+      delegate_to: localhost
+          
+#      always:
+#        - name: Fail if JCL job return code is non-zero or None without rescue to be registered on Ansible Controller as a playbook failure.
+#          fail:
+#            msg: "ERROR! {{ submit_job_name }} failed with return code {{ submit_job_ret_code }} {{ submit_job_ret_code_msg }}."
+#          when: submit_job_ret_code == "" or job_sub_result.jobs[0].ret_code.code != 0
+

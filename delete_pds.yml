@@ -1,0 +1,13 @@
+---
+- name: Delete Data Set
+  hosts: zos_host
+  collections:
+    - ibm.ibm_zos_core
+  gather_facts: no
+  environment: "{{ environment_vars }}"
+  
+  tasks:
+  - name: Delete data set
+    zos_tso_command:
+        commands:
+            - delete '{{ pds }}'

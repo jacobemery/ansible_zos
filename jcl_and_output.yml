@@ -1,0 +1,91 @@
+# (c) Copyright IBM Corporation 2021
+# Apache License, Version 2.0 (see https://opensource.org/licenses/Apache-2.0)
+---
+- name: Define a new queue 
+  hosts: zos_host
+  collections:
+    - ibm.ibm_zos_core
+  gather_facts: no
+  environment:
+    _BPXK_AUTOCVT: "ON"
+    ZOAU_HOME: "{{ ZOAU }}"
+    PYTHONPATH: "{{ ZOAU }}/lib"
+    LIBPATH: "{{ ZOAU }}/lib:{{ PYZ }}/lib:/lib:/usr/lib:."
+    PATH: "{{ ZOAU }}/bin:{{ PYZ }}/bin:/bin:/var/bin"
+    _CEE_RUNOPTS: "FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)"
+    _TAG_REDIR_ERR: "txt"
+    _TAG_REDIR_IN: "txt"
+    _TAG_REDIR_OUT: "txt"
+    LANG: "C"
+
+  tasks:
+    - name: Convert a local JCL file to IBM-037 and submit the job
+      zos_job_submit:
+        src: "{{ playbook_dir }}/HELLO.jcl"
+        location: LOCAL
+        wait: false
+        encoding:
+          from: ISO8859-1
+          to: IBM-037
+      register: job_sub_result_production
+      tags: mode_production
+
+    - name: Set fact `job_sub_result` with live production content
+      set_fact:
+        job_sub_result: "{{ job_sub_result_production }}"
+      tags: mode_production
+
+    - name: Set facts used in this playbook
+      set_fact:
+        submit_job_name: "{{ job_sub_result.jobs[0].job_name }}"
+        submit_job_id: "{{ job_sub_result.jobs[0].job_id }}"
+        submit_jobs_ddnames_length: "{{ job_sub_result.jobs[0].ddnames |length }}"
+        submit_job_ddnames_list: "{{ job_sub_result.jobs[0].ddnames }}"
+        submit_job_list: "{{ job_sub_result.jobs[0] }}"
+      tags: always
+
+    - name: Fact values used in this playbook
+      debug:
+        msg:
+          - Job name={{ submit_job_name }}
+          - Job ID={{ submit_job_id }}
+          - DD Count={{ submit_jobs_ddnames_length }}
+          - "{{ submit_job_ddnames_list }}"
+          - "{{ submit_job_list }}"
+      tags: mode_verbose
+
+    - name: Get job output for job ID {{ submit_job_id }}
+      zos_job_output:
+        job_id: "{{ submit_job_id }}"
+      register: job_output_result
+      when: job_sub_result_production is defined and job_sub_result_production
+      tags: always
+
+    - name: Result for get job output for job ID {{ submit_job_id }}
+      debug:
+        msg: "{{ job_output_result }}"
+      when: job_sub_result_production is defined and job_sub_result_production
+      tags: always
+
+    - name: Send an email with job results.
+      tags: mail, email, e-mail
+      mail:
+        host: "{{ ansible_host }}"
+        port: 25
+        from: "{{ ansible_host }}"
+        to: "{{ mail_to }}"
+        subject: "Ansible mq_rexx_try playbook results"
+        body: |
+          Ansible playbook results: 
+          
+          Playbook: jcl_and_output
+          Host: {{ inventory_hostname }}
+          
+          Job:
+            Name: {{ submit_job_name }}
+            ID: {{ submit_job_id }}
+            Failed: {{ job_output_result.failed }}
+            Output: 
+
+            {{ job_output_result }}
+      delegate_to: localhost
